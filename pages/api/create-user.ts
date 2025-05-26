@@ -9,7 +9,7 @@ const supabase = createClient(
 const allowedOrigins = [
   'https://trackship-flow-central.vercel.app',
   'http://localhost:8080'
-];
+];,.
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const origin = req.headers.origin;
