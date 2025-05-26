@@ -1,5 +1,4 @@
-// /pages/api/create-user.ts (Next.js API route or any backend handler)
-import { NextApiRequest, NextApiResponse } from 'next';
+import type { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -8,9 +7,21 @@ const supabase = createClient(
 );
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // CORS preflight
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   const apiKey = req.headers.authorization || req.headers['x-api-key'];
   if (apiKey !== process.env.ADMIN_API_KEY) {
@@ -23,18 +34,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    // Check if user already exists
-    const { data: existingUsers, error: fetchError } = await supabase.auth.admin.listUsers({
-      page: 1,
-      perPage: 100
-    });
-
+    const { data: existingUsers, error: fetchError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 100 });
     const alreadyExists = existingUsers?.users.find(user => user.email === email);
     if (alreadyExists) {
       return res.status(409).json({ error: 'A user with this email already exists' });
     }
 
-    // 1. Create user in Supabase Auth
     const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
       email,
       password,
@@ -46,8 +51,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const userId = authUser.user.id;
-
-    // 2. Insert into custom users table
     const { error: userInsertError } = await supabase.from('users').insert([{
       id: userId,
       name,
@@ -59,9 +62,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(500).json({ error: userInsertError.message });
     }
 
-    // 3. Insert permissions
     let allPermissions = [...permissions];
-
     if (permissions.includes('admin')) {
       allPermissions = [
         'can_create_product', 'can_edit_product', 'can_delete_product',
@@ -75,7 +76,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const uniquePerms = Array.from(new Set(allPermissions.filter(p => p !== 'admin')));
-
     if (uniquePerms.length > 0) {
       const perms = uniquePerms.map((p: string) => ({ user_id: userId, permission: p }));
       await supabase.from('permissions').insert(perms);
@@ -87,4 +87,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ error: 'Unexpected error', details: err });
   }
 }
-
